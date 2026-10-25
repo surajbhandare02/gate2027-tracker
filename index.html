@@ -1,0 +1,2061 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>GATE 2027 Tracker</title>
+  <!-- Allowlisted Tailwind CSS CDN -->
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    /* CSS Variables Design Tokens */
+    :root {
+      --background: #090d16;
+      --content: #0f172a;
+      --card: #131d33;
+      --foreground: #f8fafc;
+      --muted-foreground: #94a3b8;
+      --border: #23314f;
+      --primary: #3b82f6;
+      --primary-foreground: #ffffff;
+      --accent: #6366f1;
+    }
+
+    /* Base styles & Scrollbar */
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--background);
+      color: var(--foreground);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 9999px;
+    }
+
+    /* Spring animation for habit checkbox */
+    @keyframes springCheck {
+      0% { transform: scale(1); }
+      40% { transform: scale(1.3); }
+      70% { transform: scale(0.9); }
+      100% { transform: scale(1); }
+    }
+    .spring-check {
+      animation: springCheck 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    }
+
+    /* Progress ring */
+    .ring-progress {
+      transition: stroke-dashoffset 0.6s ease;
+    }
+
+    /* Smooth tab transitions */
+    .tab-content {
+      animation: tabFadeIn 0.22s ease-out;
+    }
+    @keyframes tabFadeIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Modal Animation */
+    @keyframes modalSlideUp {
+      from { transform: translateY(100%); opacity: 0; }
+      to { transform: translateY(0); opacity: 1; }
+    }
+    .modal-sheet-animate {
+      animation: modalSlideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* Toast Animation */
+    @keyframes toastSlideIn {
+      from { opacity: 0; transform: translateY(-12px) scale(0.96); }
+      to { opacity: 1; transform: translateY(0) scale(1); }
+    }
+    .toast-anim {
+      animation: toastSlideIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+
+    /* Timer digits */
+    .timer-display {
+      font-variant-numeric: tabular-nums;
+      letter-spacing: 0.05em;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+  </style>
+</head>
+<body class="bg-[var(--background)] text-[var(--foreground)] antialiased select-none min-h-screen flex flex-col">
+
+  <!-- Mobile App Frame Container -->
+  <div id="app" class="max-w-md mx-auto w-full min-h-screen flex flex-col relative bg-[var(--background)] shadow-2xl">
+    
+    <!-- Dynamic Toast Notification Container -->
+    <div id="toast-container" class="fixed top-4 left-1/2 -translate-x-1/2 w-11/12 max-w-sm z-50 pointer-events-none flex flex-col gap-2"></div>
+
+    <!-- Main Scrollable Content Area -->
+    <main id="main-content" class="flex-1 overflow-y-auto pb-24 px-4 pt-2">
+      <!-- Dynamic tab views rendered by JavaScript -->
+    </main>
+
+    <!-- Bottom Navigation Bar -->
+    <nav id="bottom-nav" class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-md border-t border-[var(--border)] bg-[var(--card)]/95 backdrop-blur-md flex items-center justify-around py-2 z-40">
+      <!-- 4 nav buttons rendered by JavaScript -->
+    </nav>
+
+    <!-- Universal Modal Overlay -->
+    <div id="modal-overlay" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+      <div id="modal-content" class="w-full max-w-md bg-[var(--card)] border border-[var(--border)] rounded-t-3xl sm:rounded-2xl p-6 max-h-[85vh] overflow-y-auto modal-sheet-animate shadow-2xl">
+        <!-- Injected modal content -->
+      </div>
+    </div>
+
+    <!-- Hidden File Input for JSON Backup Import -->
+    <input type="file" id="json-file-input" accept=".json" class="hidden" onchange="handleFileImport(event)" />
+  </div>
+
+  <script>
+    /* ==========================================================================
+       GATE 2027 TRACKER - CORE ARCHITECTURE & LOGIC
+       ========================================================================== */
+
+    // Constants & Category Registry
+    const CATEGORIES = {
+      core_subject: { id: 'core_subject', label: 'Core Subject', color: '#3b82f6' },
+      eng_maths:    { id: 'eng_maths',    label: 'Eng. Maths',   color: '#a855f7' },
+      gen_aptitude: { id: 'gen_aptitude', label: 'Gen. Aptitude', color: '#f97316' },
+      pyqs:         { id: 'pyqs',         label: 'PYQs',          color: '#22c55e' },
+      revision:     { id: 'revision',     label: 'Revision',      color: '#eab308' },
+      mock_test:    { id: 'mock_test',    label: 'Mock Test',     color: '#ef4444' }
+    };
+
+    const SUBJECT_PRESET_COLORS = [
+      '#3b82f6', // Blue
+      '#a855f7', // Purple
+      '#10b981', // Emerald
+      '#f59e0b', // Amber
+      '#f43f5e', // Rose
+      '#06b6d4'  // Cyan
+    ];
+
+    const DAYS_OF_WEEK = [
+      { id: 1, label: 'Mon', short: 'M' },
+      { id: 2, label: 'Tue', short: 'T' },
+      { id: 3, label: 'Wed', short: 'W' },
+      { id: 4, label: 'Thu', short: 'T' },
+      { id: 5, label: 'Fri', short: 'F' },
+      { id: 6, label: 'Sat', short: 'S' },
+      { id: 0, label: 'Sun', short: 'S' }
+    ];
+
+    // Inline SVG Icon Collection
+    const ICONS = {
+      home: `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>`,
+      syllabus: `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"/></svg>`,
+      focus: `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>`,
+      settings: `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><circle cx="12" cy="12" r="3" stroke-width="2"/></svg>`,
+      plus: `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M12 4v16m8-8H4"/></svg>`,
+      check: `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>`,
+      dots: `<svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 6a2 2 0 110-4 2 2 0 010 4zM10 12a2 2 0 110-4 2 2 0 010 4zM10 18a2 2 0 110-4 2 2 0 010 4z"/></svg>`,
+      trash: `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>`,
+      chevronDown: `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>`,
+      chevronUp: `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>`,
+      play: `<svg class="w-5 h-5 fill-current" viewBox="0 0 20 20"><path d="M4.5 3.5l11 6.5-11 6.5v-13z"/></svg>`,
+      pause: `<svg class="w-5 h-5 fill-current" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M5 4h3v12H5V4zm7 0h3v12h-3V4z"/></svg>`,
+      reset: `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>`,
+      download: `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/></svg>`,
+      upload: `<svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>`,
+      close: `<svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>`
+    };
+
+    // Navigation Structure
+    const NAV_TABS = [
+      { id: 'home',     label: 'Home',     icon: 'home' },
+      { id: 'syllabus', label: 'Syllabus', icon: 'syllabus' },
+      { id: 'focus',    label: 'Focus',    icon: 'focus' },
+      { id: 'settings', label: 'Settings', icon: 'settings' }
+    ];
+
+    // Global Application State (Starts strictly empty)
+    let appState = {
+      habits: [],          // array of habit objects
+      habitLogs: {},       // { "YYYY-MM-DD": { habitId: value } }
+      subjects: [],        // array of subject objects
+      mockTests: [],       // array of mock test log entries
+      settings: {
+        examDate: "2027-02-06",
+        targetScore: null,
+        targetRank: null
+      }
+    };
+
+    // Global Timer State (Persistent across tab switches)
+    let timerState = {
+      mode: 'pomodoro',        // 'pomodoro' | 'cbt'
+      pomodoroType: 'focus',   // 'focus' | 'break'
+      focusMins: 50,
+      breakMins: 10,
+      remainingSeconds: 50 * 60,
+      isRunning: false
+    };
+
+    let timerInterval = null;
+    let currentTab = 'home';
+    let expandedSubjects = new Set(); // tracks open subject accordion cards
+
+    /* ==========================================================================
+       UTILITY & HELPER FUNCTIONS
+       ========================================================================== */
+
+    function generateId() {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+      }
+      return 'id_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now();
+    }
+
+    function formatDateYMD(dateObj) {
+      const year = dateObj.getFullYear();
+      const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+      const day = String(dateObj.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+
+    function getToday() {
+      return formatDateYMD(new Date());
+    }
+
+    function formatDateNice(dateStr) {
+      if (!dateStr) return '';
+      const parts = dateStr.split('-');
+      if (parts.length !== 3) return dateStr;
+      const d = new Date(parts[0], parts[1] - 1, parts[2]);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    }
+
+    function daysUntilGate() {
+      const targetStr = (appState.settings && appState.settings.examDate) || '2027-02-06';
+      const target = new Date(targetStr + 'T00:00:00');
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const diffTime = target - today;
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return Math.max(0, diffDays);
+    }
+
+    function formatTimer(totalSeconds, mode = 'pomodoro') {
+      const s = Math.max(0, totalSeconds);
+      if (mode === 'cbt' || s >= 3600) {
+        const hrs = Math.floor(s / 3600);
+        const mins = Math.floor((s % 3600) / 60);
+        const secs = s % 60;
+        return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+      } else {
+        const mins = Math.floor(s / 60);
+        const secs = s % 60;
+        return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+      }
+    }
+
+    // Audio Chimes using Web Audio API (Zero external assets needed)
+    function playAudioTone(type) {
+      try {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (!AudioCtx) return;
+        const ctx = new AudioCtx();
+        if (type === 'check') {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
+          osc.frequency.exponentialRampToValueAtTime(783.99, ctx.currentTime + 0.12); // G5
+          gain.gain.setValueAtTime(0.12, ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.22);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.22);
+        } else if (type === 'fanfare') {
+          [523.25, 659.25, 783.99, 1046.50].forEach((freq, idx) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.value = freq;
+            const start = ctx.currentTime + idx * 0.08;
+            gain.gain.setValueAtTime(0.15, start);
+            gain.gain.exponentialRampToValueAtTime(0.001, start + 0.28);
+            osc.connect(gain);
+            gain.connect(ctx.destination);
+            osc.start(start);
+            osc.stop(start + 0.28);
+          });
+        }
+      } catch (err) {
+        // Safe fallback if user has not yet interacted with audio element
+      }
+    }
+
+    // Toast Notification System
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toast-container');
+      if (!container) return;
+
+      const toast = document.createElement('div');
+      toast.className = 'toast-anim px-4 py-2.5 rounded-xl border shadow-xl text-xs font-semibold flex items-center justify-between pointer-events-auto backdrop-blur-md transition-all duration-200';
+      
+      if (type === 'success') {
+        toast.style.borderColor = 'rgba(34, 197, 94, 0.45)';
+        toast.style.backgroundColor = 'var(--card)';
+        toast.style.color = '#4ade80';
+      } else if (type === 'warning') {
+        toast.style.borderColor = 'rgba(239, 68, 68, 0.45)';
+        toast.style.backgroundColor = 'var(--card)';
+        toast.style.color = '#f87171';
+      } else {
+        toast.style.borderColor = 'var(--border)';
+        toast.style.backgroundColor = 'var(--card)';
+        toast.style.color = 'var(--foreground)';
+      }
+
+      toast.innerHTML = `
+        <span class="flex-1 mr-2 leading-tight">${message}</span>
+        <button onclick="this.parentElement.remove()" class="text-[var(--muted-foreground)] hover:text-[var(--foreground)] text-sm font-bold">&times;</button>
+      `;
+
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-10px)';
+        setTimeout(() => toast.remove(), 250);
+      }, 2600);
+    }
+
+    /* ==========================================================================
+       LOCALSTORAGE PERSISTENCE
+       ========================================================================== */
+
+    const STORAGE_KEY = 'gate2027_tracker_state';
+
+    function loadData() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          appState = {
+            habits: Array.isArray(parsed.habits) ? parsed.habits : [],
+            habitLogs: typeof parsed.habitLogs === 'object' && parsed.habitLogs !== null ? parsed.habitLogs : {},
+            subjects: Array.isArray(parsed.subjects) ? parsed.subjects : [],
+            mockTests: Array.isArray(parsed.mockTests) ? parsed.mockTests : [],
+            settings: {
+              examDate: parsed.settings?.examDate || "2027-02-06",
+              targetScore: parsed.settings?.targetScore || null,
+              targetRank: parsed.settings?.targetRank || null
+            }
+          };
+        }
+      } catch (e) {
+        console.error("Failed to load saved state:", e);
+      }
+    }
+
+    function saveData() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(appState));
+      } catch (e) {
+        console.error("Failed to save state to localStorage:", e);
+      }
+    }
+
+    /* ==========================================================================
+       HABIT CALCULATION ENGINE
+       ========================================================================== */
+
+    function isHabitScheduledForDate(habit, dateObj) {
+      if (!habit.frequency || habit.frequency === 'daily') return true;
+      if (Array.isArray(habit.frequency)) {
+        return habit.frequency.includes(dateObj.getDay());
+      }
+      return true;
+    }
+
+    function isHabitCompleted(habit, dateStr) {
+      const logVal = appState.habitLogs[dateStr]?.[habit.id];
+      if (habit.trackingType === 'binary') {
+        return !!logVal;
+      } else {
+        const target = habit.dailyTarget || 1;
+        return (logVal || 0) >= target;
+      }
+    }
+
+    function calculateStreak(habitId) {
+      const habit = appState.habits.find(h => h.id === habitId);
+      if (!habit) return 0;
+
+      const todayStr = getToday();
+      const todayDone = isHabitCompleted(habit, todayStr);
+
+      let streak = 0;
+      let curr = new Date();
+
+      if (todayDone) {
+        streak = 1;
+        curr.setDate(curr.getDate() - 1);
+      } else {
+        // Today is not yet completed; walk backward starting yesterday
+        curr.setDate(curr.getDate() - 1);
+      }
+
+      for (let i = 0; i < 365; i++) {
+        const isScheduled = isHabitScheduledForDate(habit, curr);
+        const dStr = formatDateYMD(curr);
+
+        if (isScheduled) {
+          if (isHabitCompleted(habit, dStr)) {
+            streak++;
+          } else {
+            // Streak ended
+            break;
+          }
+        }
+        // If not scheduled, does not break streak
+        curr.setDate(curr.getDate() - 1);
+      }
+
+      return streak;
+    }
+
+    function getTodayHabitsStats() {
+      const todayStr = getToday();
+      const todayDate = new Date();
+
+      const scheduledHabits = appState.habits.filter(h => isHabitScheduledForDate(h, todayDate));
+      const totalToday = scheduledHabits.length;
+      const completedToday = scheduledHabits.filter(h => isHabitCompleted(h, todayStr)).length;
+      
+      const ratio = totalToday > 0 ? (completedToday / totalToday) : 0;
+      // SVG Circumference: 2 * PI * 52 ≈ 326.7256
+      const strokeDashoffset = totalToday > 0 ? (326.7 * (1 - ratio)).toFixed(1) : '326.7';
+
+      return {
+        completedToday,
+        totalToday,
+        ratio,
+        strokeDashoffset,
+        percent: totalToday > 0 ? Math.round(ratio * 100) : 0
+      };
+    }
+
+    /* ==========================================================================
+       SYLLABUS CALCULATION ENGINE
+       ========================================================================== */
+
+    function getCompletionPercent(subject) {
+      if (!subject.topics || subject.topics.length === 0) return 0;
+      const totalPoints = subject.topics.length * 3;
+      let earned = 0;
+      subject.topics.forEach(t => {
+        if (t.concept) earned++;
+        if (t.pyqs) earned++;
+        if (t.notes) earned++;
+      });
+      return Math.round((earned / totalPoints) * 100);
+    }
+
+    function getSyllabusSummary() {
+      const totalSubjects = appState.subjects.length;
+      if (totalSubjects === 0) {
+        return { completedSubjects: 0, totalSubjects: 0, percent: 0, totalTopics: 0 };
+      }
+
+      const completedSubjects = appState.subjects.filter(s => {
+        return s.topics && s.topics.length > 0 && s.topics.every(t => t.concept && t.pyqs && t.notes);
+      }).length;
+
+      let totalTopicPoints = 0;
+      let earnedTopicPoints = 0;
+      let totalTopics = 0;
+
+      appState.subjects.forEach(s => {
+        if (s.topics) {
+          totalTopics += s.topics.length;
+          totalTopicPoints += s.topics.length * 3;
+          s.topics.forEach(t => {
+            if (t.concept) earnedTopicPoints++;
+            if (t.pyqs) earnedTopicPoints++;
+            if (t.notes) earnedTopicPoints++;
+          });
+        }
+      });
+
+      const percent = totalTopicPoints > 0 ? Math.round((earnedTopicPoints / totalTopicPoints) * 100) : 0;
+
+      return { completedSubjects, totalSubjects, percent, totalTopics };
+    }
+
+    /* ==========================================================================
+       TIMER ENGINE
+       ========================================================================== */
+
+    function toggleTimer() {
+      if (timerState.isRunning) {
+        pauseTimer();
+      } else {
+        startTimer();
+      }
+    }
+
+    function startTimer() {
+      timerState.isRunning = true;
+      if (!timerInterval) {
+        timerInterval = setInterval(timerTick, 1000);
+      }
+      updateTimerUI();
+    }
+
+    function pauseTimer() {
+      timerState.isRunning = false;
+      if (timerInterval) {
+        clearInterval(timerInterval);
+        timerInterval = null;
+      }
+      updateTimerUI();
+    }
+
+    function resetTimer() {
+      pauseTimer();
+      if (timerState.mode === 'pomodoro') {
+        if (timerState.pomodoroType === 'focus') {
+          timerState.remainingSeconds = timerState.focusMins * 60;
+        } else {
+          timerState.remainingSeconds = timerState.breakMins * 60;
+        }
+      } else {
+        timerState.remainingSeconds = 10800; // 3 Hours GATE CBT
+      }
+      updateTimerUI();
+    }
+
+    function switchTimerMode(mode) {
+      if (timerState.mode === mode) return;
+      pauseTimer();
+      timerState.mode = mode;
+      if (mode === 'pomodoro') {
+        timerState.pomodoroType = 'focus';
+        timerState.remainingSeconds = timerState.focusMins * 60;
+      } else {
+        timerState.remainingSeconds = 10800;
+      }
+      renderTab('focus');
+    }
+
+    function switchPomodoroPhase(type) {
+      pauseTimer();
+      timerState.pomodoroType = type;
+      if (type === 'focus') {
+        timerState.remainingSeconds = timerState.focusMins * 60;
+      } else {
+        timerState.remainingSeconds = timerState.breakMins * 60;
+      }
+      updateTimerUI();
+    }
+
+    function timerTick() {
+      if (!timerState.isRunning) return;
+      if (timerState.remainingSeconds > 0) {
+        timerState.remainingSeconds--;
+        updateTimerDisplayOnly();
+      } else {
+        handleTimerCompletion();
+      }
+    }
+
+    function handleTimerCompletion() {
+      playAudioTone('fanfare');
+      if (timerState.mode === 'pomodoro') {
+        if (timerState.pomodoroType === 'focus') {
+          showToast("Focus session complete! Time for a 10m break ☕", "success");
+          timerState.pomodoroType = 'break';
+          timerState.remainingSeconds = timerState.breakMins * 60;
+        } else {
+          showToast("Break finished! Starting deep focus session 🎯", "info");
+          timerState.pomodoroType = 'focus';
+          timerState.remainingSeconds = timerState.focusMins * 60;
+        }
+        updateTimerUI();
+      } else {
+        pauseTimer();
+        showToast("GATE CBT 3-Hour Simulation Completed! 🏆", "success");
+        timerState.remainingSeconds = 10800;
+        updateTimerUI();
+      }
+    }
+
+    function updateTimerDisplayOnly() {
+      const displayEl = document.getElementById('timer-time-display');
+      if (displayEl) {
+        displayEl.textContent = formatTimer(timerState.remainingSeconds, timerState.mode);
+      }
+      // Update browser tab title
+      document.title = `${formatTimer(timerState.remainingSeconds, timerState.mode)} • GATE 2027 Focus`;
+    }
+
+    function updateTimerUI() {
+      updateTimerDisplayOnly();
+      const btn = document.getElementById('timer-play-btn');
+      if (btn) {
+        if (timerState.isRunning) {
+          btn.innerHTML = `${ICONS.pause} <span>Pause</span>`;
+          btn.classList.remove('bg-[var(--primary)]');
+          btn.classList.add('bg-[var(--accent)]');
+        } else {
+          btn.innerHTML = `${ICONS.play} <span>Start</span>`;
+          btn.classList.remove('bg-[var(--accent)]');
+          btn.classList.add('bg-[var(--primary)]');
+        }
+      }
+
+      const badge = document.getElementById('pomodoro-phase-badge');
+      if (badge) {
+        if (timerState.pomodoroType === 'focus') {
+          badge.textContent = 'Focus Session';
+          badge.style.backgroundColor = 'rgba(59, 130, 246, 0.15)';
+          badge.style.borderColor = 'rgba(59, 130, 246, 0.35)';
+          badge.style.color = '#60a5fa';
+        } else {
+          badge.textContent = 'Break Time';
+          badge.style.backgroundColor = 'rgba(34, 197, 94, 0.15)';
+          badge.style.borderColor = 'rgba(34, 197, 94, 0.35)';
+          badge.style.color = '#4ade80';
+        }
+      }
+    }
+
+    function updatePomodoroSettings(focusMins, breakMins) {
+      if (focusMins !== null) {
+        timerState.focusMins = Math.max(1, parseInt(focusMins, 10) || 50);
+      }
+      if (breakMins !== null) {
+        timerState.breakMins = Math.max(1, parseInt(breakMins, 10) || 10);
+      }
+      if (!timerState.isRunning) {
+        resetTimer();
+      }
+    }
+
+    /* ==========================================================================
+       MODAL CONTROLLER
+       ========================================================================== */
+
+    function openModal(htmlContent) {
+      const overlay = document.getElementById('modal-overlay');
+      const content = document.getElementById('modal-content');
+      content.innerHTML = htmlContent;
+      overlay.classList.remove('hidden');
+    }
+
+    function closeModal() {
+      const overlay = document.getElementById('modal-overlay');
+      const content = document.getElementById('modal-content');
+      overlay.classList.add('hidden');
+      content.innerHTML = '';
+    }
+
+    // Close on overlay backdrop tap & ESC key
+    document.getElementById('modal-overlay').addEventListener('click', (e) => {
+      if (e.target.id === 'modal-overlay') {
+        closeModal();
+      }
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') closeModal();
+    });
+
+    /* ==========================================================================
+       TAB 1: HOME CONTROLLER & VIEWS
+       ========================================================================== */
+
+    function renderHomeTab() {
+      const daysLeft = daysUntilGate();
+      const ringStats = getTodayHabitsStats();
+      const todayStr = getToday();
+      const todayDate = new Date();
+
+      let habitsListHtml = '';
+
+      if (appState.habits.length === 0) {
+        // Empty state when habits = []
+        habitsListHtml = `
+          <div class="flex flex-col items-center justify-center p-8 text-center bg-[var(--card)] border border-[var(--border)] rounded-2xl my-2 shadow-sm">
+            <div class="w-16 h-16 rounded-2xl bg-[var(--content)] border border-[var(--border)] flex items-center justify-center text-3xl shadow-sm mb-4">
+              🎯
+            </div>
+            <h3 class="text-lg font-bold text-[var(--foreground)]">No habits yet</h3>
+            <p class="text-xs text-[var(--muted-foreground)] max-w-[220px] mt-1 mb-5 leading-relaxed">
+              Build your GATE routine from scratch
+            </p>
+            <button onclick="openAddHabitModal()" class="px-5 py-2.5 rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold shadow-md hover:opacity-90 active:scale-95 transition-all flex items-center gap-2">
+              ${ICONS.plus} <span>Add Your First GATE Habit</span>
+            </button>
+          </div>
+        `;
+      } else {
+        // Render list of habit cards
+        habitsListHtml = appState.habits.map(habit => {
+          const category = CATEGORIES[habit.category] || CATEGORIES.core_subject;
+          const streak = calculateStreak(habit.id);
+          const isScheduledToday = isHabitScheduledForDate(habit, todayDate);
+          const todayVal = appState.habitLogs[todayStr]?.[habit.id];
+          const isDoneToday = isHabitCompleted(habit, todayStr);
+
+          // Build Right Action Control
+          let rightActionHtml = '';
+          if (habit.trackingType === 'binary') {
+            rightActionHtml = `
+              <button onclick="toggleBinaryHabit('${habit.id}', this)" class="w-10 h-10 rounded-full flex items-center justify-center transition-all ${isDoneToday ? 'bg-[var(--primary)] text-[var(--primary-foreground)] spring-check shadow-md' : 'border-2 border-[var(--border)] hover:border-[var(--primary)] text-transparent'}">
+                ${ICONS.check}
+              </button>
+            `;
+          } else {
+            const currentQty = Number(todayVal || 0);
+            const targetQty = habit.dailyTarget || 1;
+            rightActionHtml = `
+              <div class="flex items-center gap-1.5 bg-[var(--content)] px-2 py-1.5 rounded-xl border border-[var(--border)]">
+                <button onclick="decrementQuantitativeHabit('${habit.id}')" class="w-7 h-7 rounded-lg bg-[var(--card)] border border-[var(--border)] flex items-center justify-center text-sm font-bold active:scale-90 transition-all">−</button>
+                <span class="font-mono text-xs font-bold px-1.5 ${currentQty >= targetQty ? 'text-emerald-400' : 'text-[var(--foreground)]'}">${currentQty}/${targetQty}</span>
+                <button onclick="incrementQuantitativeHabit('${habit.id}', this)" class="w-7 h-7 rounded-lg bg-[var(--card)] border border-[var(--border)] flex items-center justify-center text-sm font-bold active:scale-90 transition-all">+</button>
+              </div>
+            `;
+          }
+
+          // Build 7-cell mini heatmap (ending on today)
+          const heatmapCells = [];
+          for (let i = 6; i >= 0; i--) {
+            const d = new Date();
+            d.setDate(d.getDate() - i);
+            const dStr = formatDateYMD(d);
+            const dayLetter = ['S', 'M', 'T', 'W', 'T', 'F', 'S'][d.getDay()];
+            const isLogged = isHabitCompleted(habit, dStr);
+            const isToday = (i === 0);
+
+            heatmapCells.push(`
+              <div class="flex flex-col items-center gap-1">
+                <span class="text-[9px] text-[var(--muted-foreground)] font-medium">${dayLetter}</span>
+                <div class="w-3.5 h-3.5 rounded-sm transition-colors ${isLogged ? 'bg-[var(--primary)]' : 'bg-[var(--border)]'} ${isToday ? 'ring-1 ring-[var(--accent)]' : ''}" title="${dStr}: ${isLogged ? 'Completed' : 'Not completed'}"></div>
+              </div>
+            `);
+          }
+
+          return `
+            <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-4 shadow-sm hover:border-[var(--primary)]/40 transition-all">
+              <div class="flex items-start justify-between gap-3">
+                <div class="flex items-start gap-3 flex-1 min-w-0">
+                  <div class="w-3 h-3 rounded-full mt-1 shrink-0" style="background-color: ${category.color}"></div>
+                  <div class="flex-1 min-w-0">
+                    <h4 class="font-bold text-sm text-[var(--foreground)] truncate">${escapeHtml(habit.title)}</h4>
+                    <div class="flex flex-wrap items-center gap-2 mt-1">
+                      <span class="px-2 py-0.5 rounded-full text-[10px] font-semibold" style="color: ${category.color}; background-color: ${category.color}1a; border: 1px solid ${category.color}33;">
+                        ${category.label}
+                      </span>
+                      <span class="text-[11px] font-semibold text-amber-400 flex items-center gap-1">
+                        🔥 ${streak} ${streak === 1 ? 'day' : 'days'}
+                      </span>
+                      ${!isScheduledToday ? `<span class="text-[10px] text-[var(--muted-foreground)] bg-[var(--content)] px-1.5 py-0.5 rounded">Rest Day</span>` : ''}
+                    </div>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2 shrink-0">
+                  ${rightActionHtml}
+                  <button onclick="openHabitOptionsModal('${habit.id}')" class="w-8 h-8 rounded-lg flex items-center justify-center text-[var(--muted-foreground)] hover:text-[var(--foreground)] hover:bg-[var(--content)] transition-colors">
+                    ${ICONS.dots}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Mini 7-Day Heatmap Grid -->
+              <div class="flex items-center justify-between pt-3 mt-3 border-t border-[var(--border)]">
+                <span class="text-[10px] uppercase font-bold tracking-wider text-[var(--muted-foreground)]">Last 7 Days</span>
+                <div class="flex items-center gap-2">
+                  ${heatmapCells.join('')}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      return `
+        <div class="tab-content flex flex-col gap-5">
+          <!-- Countdown Header -->
+          <header class="pt-3 pb-1">
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-[var(--content)] border border-[var(--border)] text-[var(--accent)]">
+                  <span class="w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse"></span>
+                  GATE 2027 Countdown
+                </span>
+                <h1 class="text-3xl font-extrabold tracking-tight mt-2 text-[var(--foreground)]">
+                  <span class="text-[var(--primary)] font-black text-4xl">${daysLeft}</span> days to GATE 2027
+                </h1>
+                <p class="text-xs text-[var(--muted-foreground)] mt-0.5 font-medium">February 6, 2027 • CS/IT</p>
+              </div>
+            </div>
+          </header>
+
+          <!-- Daily Habits Progress Ring Card (Apple Fitness Style) -->
+          <section class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm flex items-center justify-between gap-4">
+            <div>
+              <span class="text-[10px] font-bold tracking-wider uppercase text-[var(--primary)]">Daily Ring</span>
+              <h3 class="text-xl font-extrabold mt-0.5 text-[var(--foreground)]">${ringStats.completedToday} of ${ringStats.totalToday} Complete</h3>
+              <p class="text-xs text-[var(--muted-foreground)] mt-1">
+                ${ringStats.totalToday === 0 ? 'No habits scheduled for today' : `${ringStats.percent}% daily target achieved`}
+              </p>
+            </div>
+
+            <!-- 120x120 Circular Progress Ring -->
+            <div class="relative w-[120px] h-[120px] flex items-center justify-center shrink-0">
+              <svg width="120" height="120" viewBox="0 0 120 120" class="shrink-0">
+                <!-- Background Circle -->
+                <circle cx="60" cy="60" r="52" fill="none" stroke="var(--border)" stroke-width="8" />
+                <!-- Foreground Progress Arc -->
+                <circle cx="60" cy="60" r="52" fill="none" stroke="var(--primary)" stroke-width="8" stroke-linecap="round"
+                  stroke-dasharray="326.7" stroke-dashoffset="${ringStats.strokeDashoffset}"
+                  transform="rotate(-90 60 60)" class="ring-progress" />
+                <!-- Centered Text (Kept upright) -->
+                <text x="60" y="56" text-anchor="middle" font-size="20" font-weight="bold" fill="var(--foreground)">${ringStats.completedToday}/${ringStats.totalToday}</text>
+                <text x="60" y="74" text-anchor="middle" font-size="10" font-weight="bold" fill="var(--muted-foreground)" letter-spacing="1">TODAY</text>
+              </svg>
+            </div>
+          </section>
+
+          <!-- Today's Habits Section -->
+          <section class="flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+              <h2 class="text-base font-bold text-[var(--foreground)]">Today's Habits</h2>
+              <button onclick="openAddHabitModal()" class="px-3 py-1.5 rounded-xl bg-[var(--content)] border border-[var(--border)] hover:border-[var(--primary)] text-[var(--primary)] text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm">
+                ${ICONS.plus} <span>Add Habit</span>
+              </button>
+            </div>
+
+            <div class="flex flex-col gap-3">
+              ${habitsListHtml}
+            </div>
+          </section>
+        </div>
+      `;
+    }
+
+    function toggleBinaryHabit(habitId, btnElement) {
+      const todayStr = getToday();
+      if (!appState.habitLogs[todayStr]) appState.habitLogs[todayStr] = {};
+      const current = !!appState.habitLogs[todayStr][habitId];
+      const next = !current;
+      appState.habitLogs[todayStr][habitId] = next;
+      saveData();
+
+      if (next) {
+        playAudioTone('check');
+        const habit = appState.habits.find(h => h.id === habitId);
+        showToast(`Logged: ${habit ? habit.title : 'Habit'}! 🔥`, 'success');
+      }
+
+      renderCurrentTab();
+    }
+
+    function incrementQuantitativeHabit(habitId, btnElement) {
+      const todayStr = getToday();
+      if (!appState.habitLogs[todayStr]) appState.habitLogs[todayStr] = {};
+      const current = Number(appState.habitLogs[todayStr][habitId] || 0);
+      const habit = appState.habits.find(h => h.id === habitId);
+      const next = current + 1;
+      appState.habitLogs[todayStr][habitId] = next;
+      saveData();
+
+      if (habit && next === (habit.dailyTarget || 1)) {
+        playAudioTone('check');
+        showToast(`Target reached for "${habit.title}"! 🔥`, 'success');
+      }
+
+      renderCurrentTab();
+    }
+
+    function decrementQuantitativeHabit(habitId) {
+      const todayStr = getToday();
+      if (!appState.habitLogs[todayStr]) appState.habitLogs[todayStr] = {};
+      const current = Number(appState.habitLogs[todayStr][habitId] || 0);
+      if (current > 0) {
+        appState.habitLogs[todayStr][habitId] = current - 1;
+        saveData();
+        renderCurrentTab();
+      }
+    }
+
+    /* ==========================================================================
+       HABIT MODALS (ADD, EDIT, OPTIONS)
+       ========================================================================== */
+
+    function openAddHabitModal() {
+      const categoryOptions = Object.values(CATEGORIES).map((cat, idx) => `
+        <label class="flex items-center gap-2 p-2.5 rounded-xl border border-[var(--border)] bg-[var(--content)] cursor-pointer text-xs font-semibold hover:border-[var(--primary)] transition-colors">
+          <input type="radio" name="habit-category" value="${cat.id}" ${idx === 0 ? 'checked' : ''} class="accent-[var(--primary)]" />
+          <span class="w-2.5 h-2.5 rounded-full" style="background-color: ${cat.color}"></span>
+          <span class="text-[var(--foreground)]">${cat.label}</span>
+        </label>
+      `).join('');
+
+      const daysCheckboxes = DAYS_OF_WEEK.map(day => `
+        <label class="flex flex-col items-center gap-1 cursor-pointer">
+          <input type="checkbox" name="habit-days" value="${day.id}" checked class="accent-[var(--primary)] w-4 h-4" />
+          <span class="text-[10px] font-bold text-[var(--muted-foreground)]">${day.label}</span>
+        </label>
+      `).join('');
+
+      openModal(`
+        <div>
+          <div class="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+            <h3 class="text-base font-bold text-[var(--foreground)]">Add GATE Habit</h3>
+            <button onclick="closeModal()" class="text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+              ${ICONS.close}
+            </button>
+          </div>
+
+          <form onsubmit="handleSaveNewHabit(event)" class="mt-4 flex flex-col gap-4">
+            <!-- Habit Title -->
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1.5">Habit Title</label>
+              <input type="text" id="habit-title-input" required placeholder="e.g. Solve 20 Algo PYQs" class="w-full bg-[var(--content)] border border-[var(--border)] focus:border-[var(--primary)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--foreground)] outline-none" />
+            </div>
+
+            <!-- Category -->
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1.5">Category</label>
+              <div class="grid grid-cols-2 gap-2">
+                ${categoryOptions}
+              </div>
+            </div>
+
+            <!-- Tracking Type -->
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1.5">Tracking Type</label>
+              <div class="grid grid-cols-2 gap-2">
+                <button type="button" id="type-binary-btn" onclick="setHabitFormType('binary')" class="py-2.5 rounded-xl text-xs font-bold border border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)] transition-all">
+                  Binary (Done / Not Done)
+                </button>
+                <button type="button" id="type-quant-btn" onclick="setHabitFormType('quantitative')" class="py-2.5 rounded-xl text-xs font-bold border border-[var(--border)] bg-[var(--content)] text-[var(--muted-foreground)] transition-all">
+                  Quantitative (Counter)
+                </button>
+              </div>
+              <input type="hidden" id="habit-type-val" value="binary" />
+            </div>
+
+            <!-- Daily Target (Hidden by default) -->
+            <div id="quant-target-container" class="hidden">
+              <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1.5">Daily Target</label>
+              <input type="number" id="habit-target-input" min="1" max="1000" placeholder="e.g. 20 (questions/pages/mins)" class="w-full bg-[var(--content)] border border-[var(--border)] focus:border-[var(--primary)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--foreground)] outline-none" />
+            </div>
+
+            <!-- Frequency -->
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1.5">Frequency</label>
+              <div class="flex gap-2 mb-2.5">
+                <button type="button" id="freq-daily-btn" onclick="setHabitFreqMode('daily')" class="flex-1 py-2 rounded-xl text-xs font-bold border border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]">
+                  Daily
+                </button>
+                <button type="button" id="freq-custom-btn" onclick="setHabitFreqMode('custom')" class="flex-1 py-2 rounded-xl text-xs font-bold border border-[var(--border)] bg-[var(--content)] text-[var(--muted-foreground)]">
+                  Custom Days
+                </button>
+              </div>
+              <input type="hidden" id="habit-freq-mode" value="daily" />
+
+              <div id="custom-days-picker" class="hidden p-3 bg-[var(--content)] border border-[var(--border)] rounded-xl flex items-center justify-around">
+                ${daysCheckboxes}
+              </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex gap-3 pt-2">
+              <button type="button" onclick="closeModal()" class="flex-1 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--content)] text-xs font-semibold hover:bg-[var(--border)] transition-colors">
+                Cancel
+              </button>
+              <button type="submit" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold shadow-md hover:opacity-90 transition-opacity">
+                Save Habit
+              </button>
+            </div>
+          </form>
+        </div>
+      `);
+    }
+
+    function setHabitFormType(type) {
+      document.getElementById('habit-type-val').value = type;
+      const binBtn = document.getElementById('type-binary-btn');
+      const quantBtn = document.getElementById('type-quant-btn');
+      const quantContainer = document.getElementById('quant-target-container');
+
+      if (type === 'binary') {
+        binBtn.className = "py-2.5 rounded-xl text-xs font-bold border border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)] transition-all";
+        quantBtn.className = "py-2.5 rounded-xl text-xs font-bold border border-[var(--border)] bg-[var(--content)] text-[var(--muted-foreground)] transition-all";
+        quantContainer.classList.add('hidden');
+      } else {
+        quantBtn.className = "py-2.5 rounded-xl text-xs font-bold border border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)] transition-all";
+        binBtn.className = "py-2.5 rounded-xl text-xs font-bold border border-[var(--border)] bg-[var(--content)] text-[var(--muted-foreground)] transition-all";
+        quantContainer.classList.remove('hidden');
+      }
+    }
+
+    function setHabitFreqMode(mode) {
+      document.getElementById('habit-freq-mode').value = mode;
+      const dailyBtn = document.getElementById('freq-daily-btn');
+      const customBtn = document.getElementById('freq-custom-btn');
+      const picker = document.getElementById('custom-days-picker');
+
+      if (mode === 'daily') {
+        dailyBtn.className = "flex-1 py-2 rounded-xl text-xs font-bold border border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]";
+        customBtn.className = "flex-1 py-2 rounded-xl text-xs font-bold border border-[var(--border)] bg-[var(--content)] text-[var(--muted-foreground)]";
+        picker.classList.add('hidden');
+      } else {
+        customBtn.className = "flex-1 py-2 rounded-xl text-xs font-bold border border-[var(--primary)] bg-[var(--primary)] text-[var(--primary-foreground)]";
+        dailyBtn.className = "flex-1 py-2 rounded-xl text-xs font-bold border border-[var(--border)] bg-[var(--content)] text-[var(--muted-foreground)]";
+        picker.classList.remove('hidden');
+      }
+    }
+
+    function handleSaveNewHabit(e) {
+      e.preventDefault();
+      const title = document.getElementById('habit-title-input').value.trim();
+      const category = document.querySelector('input[name="habit-category"]:checked')?.value || 'core_subject';
+      const trackingType = document.getElementById('habit-type-val').value;
+      const dailyTarget = trackingType === 'quantitative' ? (parseInt(document.getElementById('habit-target-input').value, 10) || 1) : null;
+      const freqMode = document.getElementById('habit-freq-mode').value;
+
+      let frequency = 'daily';
+      if (freqMode === 'custom') {
+        const checkedBoxes = Array.from(document.querySelectorAll('input[name="habit-days"]:checked')).map(cb => parseInt(cb.value, 10));
+        frequency = checkedBoxes.length > 0 ? checkedBoxes : 'daily';
+      }
+
+      if (!title) {
+        showToast("Please enter a habit title", "warning");
+        return;
+      }
+
+      const newHabit = {
+        id: generateId(),
+        title,
+        category,
+        trackingType,
+        dailyTarget,
+        frequency,
+        streak: 0,
+        createdAt: new Date().toISOString()
+      };
+
+      appState.habits.push(newHabit);
+      saveData();
+      closeModal();
+      showToast("GATE Habit added!", "success");
+      renderCurrentTab();
+    }
+
+    function openHabitOptionsModal(habitId) {
+      const habit = appState.habits.find(h => h.id === habitId);
+      if (!habit) return;
+
+      openModal(`
+        <div>
+          <div class="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+            <h3 class="text-base font-bold text-[var(--foreground)] truncate">${escapeHtml(habit.title)}</h3>
+            <button onclick="closeModal()" class="text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+              ${ICONS.close}
+            </button>
+          </div>
+
+          <div class="mt-4 flex flex-col gap-2.5">
+            <button onclick="openEditHabitModal('${habit.id}')" class="w-full py-3 px-4 rounded-xl bg-[var(--content)] border border-[var(--border)] text-xs font-bold text-left hover:border-[var(--primary)] text-[var(--foreground)] flex items-center justify-between">
+              <span>Edit Habit</span>
+              <span>✏️</span>
+            </button>
+
+            <button onclick="handleDeleteHabit('${habit.id}')" class="w-full py-3 px-4 rounded-xl bg-red-500/10 border border-red-500/30 text-xs font-bold text-left text-red-400 hover:bg-red-500/20 flex items-center justify-between">
+              <span>Delete Habit</span>
+              <span>🗑️</span>
+            </button>
+
+            <button onclick="closeModal()" class="w-full py-2.5 mt-2 rounded-xl border border-[var(--border)] text-xs font-semibold text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+              Cancel
+            </button>
+          </div>
+        </div>
+      `);
+    }
+
+    function openEditHabitModal(habitId) {
+      const habit = appState.habits.find(h => h.id === habitId);
+      if (!habit) return;
+
+      const categoryOptions = Object.values(CATEGORIES).map(cat => `
+        <label class="flex items-center gap-2 p-2.5 rounded-xl border border-[var(--border)] bg-[var(--content)] cursor-pointer text-xs font-semibold hover:border-[var(--primary)] transition-colors">
+          <input type="radio" name="edit-habit-category" value="${cat.id}" ${habit.category === cat.id ? 'checked' : ''} class="accent-[var(--primary)]" />
+          <span class="w-2.5 h-2.5 rounded-full" style="background-color: ${cat.color}"></span>
+          <span class="text-[var(--foreground)]">${cat.label}</span>
+        </label>
+      `).join('');
+
+      openModal(`
+        <div>
+          <div class="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+            <h3 class="text-base font-bold text-[var(--foreground)]">Edit Habit</h3>
+            <button onclick="closeModal()" class="text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+              ${ICONS.close}
+            </button>
+          </div>
+
+          <form onsubmit="handleUpdateHabit(event, '${habit.id}')" class="mt-4 flex flex-col gap-4">
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1.5">Habit Title</label>
+              <input type="text" id="edit-habit-title" required value="${escapeHtml(habit.title)}" class="w-full bg-[var(--content)] border border-[var(--border)] focus:border-[var(--primary)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--foreground)] outline-none" />
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1.5">Category</label>
+              <div class="grid grid-cols-2 gap-2">
+                ${categoryOptions}
+              </div>
+            </div>
+
+            ${habit.trackingType === 'quantitative' ? `
+              <div>
+                <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1.5">Daily Target</label>
+                <input type="number" id="edit-habit-target" min="1" max="1000" value="${habit.dailyTarget || 1}" class="w-full bg-[var(--content)] border border-[var(--border)] focus:border-[var(--primary)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--foreground)] outline-none" />
+              </div>
+            ` : ''}
+
+            <div class="flex gap-3 pt-2">
+              <button type="button" onclick="closeModal()" class="flex-1 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--content)] text-xs font-semibold hover:bg-[var(--border)]">
+                Cancel
+              </button>
+              <button type="submit" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold shadow-md hover:opacity-90">
+                Update Habit
+              </button>
+            </div>
+          </form>
+        </div>
+      `);
+    }
+
+    function handleUpdateHabit(e, habitId) {
+      e.preventDefault();
+      const habit = appState.habits.find(h => h.id === habitId);
+      if (!habit) return;
+
+      const title = document.getElementById('edit-habit-title').value.trim();
+      const category = document.querySelector('input[name="edit-habit-category"]:checked')?.value || habit.category;
+      
+      if (!title) {
+        showToast("Habit title cannot be empty", "warning");
+        return;
+      }
+
+      habit.title = title;
+      habit.category = category;
+
+      if (habit.trackingType === 'quantitative') {
+        const targetVal = parseInt(document.getElementById('edit-habit-target')?.value, 10);
+        if (targetVal > 0) habit.dailyTarget = targetVal;
+      }
+
+      saveData();
+      closeModal();
+      showToast("Habit updated!", "success");
+      renderCurrentTab();
+    }
+
+    function handleDeleteHabit(habitId) {
+      const habit = appState.habits.find(h => h.id === habitId);
+      if (!habit) return;
+
+      if (confirm(`Delete habit "${habit.title}"?`)) {
+        appState.habits = appState.habits.filter(h => h.id !== habitId);
+        // Clean orphaned logs
+        Object.keys(appState.habitLogs).forEach(dateStr => {
+          if (appState.habitLogs[dateStr]) {
+            delete appState.habitLogs[dateStr][habitId];
+          }
+        });
+        saveData();
+        closeModal();
+        showToast("Habit deleted", "info");
+        renderCurrentTab();
+      }
+    }
+
+    /* ==========================================================================
+       TAB 2: SYLLABUS CONTROLLER & VIEWS
+       ========================================================================== */
+
+    function renderSyllabusTab() {
+      const summary = getSyllabusSummary();
+
+      let subjectsListHtml = '';
+
+      if (appState.subjects.length === 0) {
+        // Empty state when subjects = []
+        subjectsListHtml = `
+          <div class="flex flex-col items-center justify-center p-8 text-center bg-[var(--card)] border border-[var(--border)] rounded-2xl my-2 shadow-sm">
+            <div class="w-16 h-16 rounded-2xl bg-[var(--content)] border border-[var(--border)] flex items-center justify-center text-3xl shadow-sm mb-4">
+              📚
+            </div>
+            <h3 class="text-lg font-bold text-[var(--foreground)]">Your syllabus awaits</h3>
+            <p class="text-xs text-[var(--muted-foreground)] max-w-[240px] mt-1 mb-5 leading-relaxed">
+              Add subjects and track your mastery topic by topic
+            </p>
+            <button onclick="openAddSubjectModal()" class="px-5 py-2.5 rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold shadow-md hover:opacity-90 active:scale-95 transition-all flex items-center gap-2">
+              ${ICONS.plus} <span>Add Subject</span>
+            </button>
+          </div>
+        `;
+      } else {
+        subjectsListHtml = appState.subjects.map(subject => {
+          const percent = getCompletionPercent(subject);
+          const isExpanded = expandedSubjects.has(subject.id);
+          const topics = subject.topics || [];
+
+          let topicsRowsHtml = '';
+          if (topics.length === 0) {
+            topicsRowsHtml = `
+              <div class="py-4 text-center text-xs text-[var(--muted-foreground)]">
+                No topics added yet. Click "+ Add Topic" below to get started.
+              </div>
+            `;
+          } else {
+            topicsRowsHtml = topics.map(topic => {
+              const topicDone = topic.concept && topic.pyqs && topic.notes;
+              return `
+                <div class="p-3 rounded-xl bg-[var(--content)] border border-[var(--border)] flex flex-col gap-2.5">
+                  <div class="flex items-center justify-between gap-2">
+                    <span class="text-xs font-bold ${topicDone ? 'line-through text-[var(--muted-foreground)]' : 'text-[var(--foreground)]'}">
+                      ${escapeHtml(topic.name)}
+                    </span>
+                    <button onclick="deleteTopic('${subject.id}', '${topic.id}')" class="text-[var(--muted-foreground)] hover:text-red-400 p-1">
+                      ${ICONS.trash}
+                    </button>
+                  </div>
+
+                  <!-- 3 Toggle Buttons in a row: Concept, PYQs, Notes -->
+                  <div class="grid grid-cols-3 gap-1.5">
+                    <!-- Concept Toggle -->
+                    <button type="button" onclick="toggleTopicItem('${subject.id}', '${topic.id}', 'concept')" class="py-1.5 px-2 rounded-lg text-[11px] font-bold border flex items-center justify-center gap-1 transition-all ${topic.concept ? 'bg-[var(--accent)] text-white border-[var(--accent)] shadow-sm' : 'bg-[var(--card)] text-[var(--muted-foreground)] border-[var(--border)] hover:border-[var(--accent)]'}">
+                      <span>📖</span>
+                      <span>Concept</span>
+                    </button>
+
+                    <!-- PYQs Toggle -->
+                    <button type="button" onclick="toggleTopicItem('${subject.id}', '${topic.id}', 'pyqs')" class="py-1.5 px-2 rounded-lg text-[11px] font-bold border flex items-center justify-center gap-1 transition-all ${topic.pyqs ? 'bg-[var(--accent)] text-white border-[var(--accent)] shadow-sm' : 'bg-[var(--card)] text-[var(--muted-foreground)] border-[var(--border)] hover:border-[var(--accent)]'}">
+                      <span>✏️</span>
+                      <span>PYQs</span>
+                    </button>
+
+                    <!-- Notes Toggle -->
+                    <button type="button" onclick="toggleTopicItem('${subject.id}', '${topic.id}', 'notes')" class="py-1.5 px-2 rounded-lg text-[11px] font-bold border flex items-center justify-center gap-1 transition-all ${topic.notes ? 'bg-[var(--accent)] text-white border-[var(--accent)] shadow-sm' : 'bg-[var(--card)] text-[var(--muted-foreground)] border-[var(--border)] hover:border-[var(--accent)]'}">
+                      <span>📝</span>
+                      <span>Notes</span>
+                    </button>
+                  </div>
+                </div>
+              `;
+            }).join('');
+          }
+
+          return `
+            <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-4 shadow-sm">
+              <!-- Subject Header Clickable Accordion -->
+              <div onclick="toggleSubjectAccordion('${subject.id}')" class="cursor-pointer flex items-center justify-between gap-3">
+                <div class="flex items-center gap-2.5 flex-1 min-w-0">
+                  <div class="w-3.5 h-3.5 rounded-full shrink-0" style="background-color: ${subject.color || 'var(--primary)'}"></div>
+                  <div class="flex-1 min-w-0">
+                    <h3 class="font-bold text-sm text-[var(--foreground)] truncate">${escapeHtml(subject.name)}</h3>
+                    <p class="text-[11px] text-[var(--muted-foreground)] mt-0.5">${topics.length} ${topics.length === 1 ? 'topic' : 'topics'} • ${percent}% mastered</p>
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-2 shrink-0">
+                  <span class="text-xs font-bold px-2 py-1 rounded-lg bg-[var(--content)] border border-[var(--border)] text-[var(--foreground)]">${percent}%</span>
+                  <div class="text-[var(--muted-foreground)]">
+                    ${isExpanded ? ICONS.chevronUp : ICONS.chevronDown}
+                  </div>
+                </div>
+              </div>
+
+              <!-- Animated Completion Bar -->
+              <div class="w-full bg-[var(--content)] h-2 rounded-full overflow-hidden mt-3 border border-[var(--border)]">
+                <div class="h-full rounded-full transition-all duration-500" style="width: ${percent}%; background-color: ${subject.color || 'var(--primary)'}"></div>
+              </div>
+
+              <!-- Expanded View Topics List -->
+              ${isExpanded ? `
+                <div class="mt-4 pt-3 border-t border-[var(--border)] flex flex-col gap-3">
+                  <div class="flex items-center justify-between">
+                    <span class="text-[10px] font-bold uppercase tracking-wider text-[var(--muted-foreground)]">Subject Topics</span>
+                    <div class="flex items-center gap-2">
+                      <button onclick="openAddTopicModal('${subject.id}')" class="px-2.5 py-1 rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold flex items-center gap-1 shadow-sm">
+                        ${ICONS.plus} <span>Topic</span>
+                      </button>
+                      <button onclick="deleteSubject('${subject.id}')" class="p-1 text-[var(--muted-foreground)] hover:text-red-400">
+                        ${ICONS.trash}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="flex flex-col gap-2 mt-1">
+                    ${topicsRowsHtml}
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('');
+      }
+
+      return `
+        <div class="tab-content flex flex-col gap-5">
+          <!-- Syllabus Header -->
+          <header class="pt-3 pb-1 flex items-center justify-between">
+            <div>
+              <h1 class="text-2xl font-extrabold tracking-tight text-[var(--foreground)]">GATE Syllabus Tracker</h1>
+              <p class="text-xs text-[var(--muted-foreground)] mt-0.5">
+                ${summary.completedSubjects} of ${summary.totalSubjects} subjects complete (${summary.percent}% syllabus)
+              </p>
+            </div>
+            <button onclick="openAddSubjectModal()" class="px-3.5 py-2 rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold shadow-md hover:opacity-90 flex items-center gap-1.5 transition-all">
+              ${ICONS.plus} <span>Add Subject</span>
+            </button>
+          </header>
+
+          <!-- Overall Syllabus Progress Bar -->
+          <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-4 shadow-sm">
+            <div class="flex items-center justify-between text-xs font-bold mb-2">
+              <span class="text-[var(--muted-foreground)]">Total Mastery Progress</span>
+              <span class="text-[var(--primary)]">${summary.percent}%</span>
+            </div>
+            <div class="w-full bg-[var(--content)] h-2.5 rounded-full overflow-hidden border border-[var(--border)]">
+              <div class="h-full bg-[var(--primary)] rounded-full transition-all duration-600" style="width: ${summary.percent}%"></div>
+            </div>
+          </div>
+
+          <!-- Subjects List -->
+          <div class="flex flex-col gap-3">
+            ${subjectsListHtml}
+          </div>
+        </div>
+      `;
+    }
+
+    function toggleSubjectAccordion(subjectId) {
+      if (expandedSubjects.has(subjectId)) {
+        expandedSubjects.delete(subjectId);
+      } else {
+        expandedSubjects.add(subjectId);
+      }
+      renderCurrentTab();
+    }
+
+    function toggleTopicItem(subjectId, topicId, field) {
+      const subject = appState.subjects.find(s => s.id === subjectId);
+      if (!subject) return;
+      const topic = subject.topics.find(t => t.id === topicId);
+      if (!topic) return;
+
+      topic[field] = !topic[field];
+      saveData();
+
+      if (topic.concept && topic.pyqs && topic.notes) {
+        playAudioTone('check');
+        showToast(`Topic "${topic.name}" 100% finished! 🚀`, 'success');
+      }
+
+      renderCurrentTab();
+    }
+
+    function deleteSubject(subjectId) {
+      const subject = appState.subjects.find(s => s.id === subjectId);
+      if (!subject) return;
+
+      if (confirm(`Delete subject "${subject.name}" and all its topics?`)) {
+        appState.subjects = appState.subjects.filter(s => s.id !== subjectId);
+        expandedSubjects.delete(subjectId);
+        saveData();
+        showToast("Subject deleted", "info");
+        renderCurrentTab();
+      }
+    }
+
+    function deleteTopic(subjectId, topicId) {
+      const subject = appState.subjects.find(s => s.id === subjectId);
+      if (!subject) return;
+
+      subject.topics = subject.topics.filter(t => t.id !== topicId);
+      saveData();
+      showToast("Topic removed", "info");
+      renderCurrentTab();
+    }
+
+    function openAddSubjectModal() {
+      const colorPresetsHtml = SUBJECT_PRESET_COLORS.map((color, idx) => `
+        <label class="cursor-pointer">
+          <input type="radio" name="subject-color" value="${color}" ${idx === 0 ? 'checked' : ''} class="hidden peer" />
+          <div class="w-8 h-8 rounded-full border-2 border-transparent peer-checked:border-[var(--foreground)] peer-checked:scale-110 transition-all shadow-sm flex items-center justify-center" style="background-color: ${color}"></div>
+        </label>
+      `).join('');
+
+      openModal(`
+        <div>
+          <div class="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+            <h3 class="text-base font-bold text-[var(--foreground)]">Add GATE Subject</h3>
+            <button onclick="closeModal()" class="text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+              ${ICONS.close}
+            </button>
+          </div>
+
+          <form onsubmit="handleSaveSubject(event)" class="mt-4 flex flex-col gap-4">
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1.5">Subject Name</label>
+              <input type="text" id="subject-name-input" required placeholder="e.g. Operating Systems / Algorithms" class="w-full bg-[var(--content)] border border-[var(--border)] focus:border-[var(--primary)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--foreground)] outline-none" />
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1.5">Accent Color</label>
+              <div class="flex items-center gap-3 pt-1">
+                ${colorPresetsHtml}
+              </div>
+            </div>
+
+            <div class="flex gap-3 pt-2">
+              <button type="button" onclick="closeModal()" class="flex-1 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--content)] text-xs font-semibold hover:bg-[var(--border)]">
+                Cancel
+              </button>
+              <button type="submit" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold shadow-md hover:opacity-90">
+                Save Subject
+              </button>
+            </div>
+          </form>
+        </div>
+      `);
+    }
+
+    function handleSaveSubject(e) {
+      e.preventDefault();
+      const name = document.getElementById('subject-name-input').value.trim();
+      const color = document.querySelector('input[name="subject-color"]:checked')?.value || SUBJECT_PRESET_COLORS[0];
+
+      if (!name) {
+        showToast("Please enter a subject name", "warning");
+        return;
+      }
+
+      const newSubject = {
+        id: generateId(),
+        name,
+        color,
+        topics: [],
+        createdAt: new Date().toISOString()
+      };
+
+      appState.subjects.push(newSubject);
+      expandedSubjects.add(newSubject.id); // Expand new subject automatically
+      saveData();
+      closeModal();
+      showToast(`Subject "${name}" added!`, "success");
+      renderCurrentTab();
+    }
+
+    function openAddTopicModal(subjectId) {
+      const subject = appState.subjects.find(s => s.id === subjectId);
+      if (!subject) return;
+
+      openModal(`
+        <div>
+          <div class="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+            <h3 class="text-base font-bold text-[var(--foreground)]">Add Topic to ${escapeHtml(subject.name)}</h3>
+            <button onclick="closeModal()" class="text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+              ${ICONS.close}
+            </button>
+          </div>
+
+          <form onsubmit="handleSaveTopic(event, '${subject.id}')" class="mt-4 flex flex-col gap-4">
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1.5">Topic Name</label>
+              <input type="text" id="topic-name-input" required placeholder="e.g. CPU Scheduling & Concurrency" class="w-full bg-[var(--content)] border border-[var(--border)] focus:border-[var(--primary)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--foreground)] outline-none" />
+            </div>
+
+            <div class="flex gap-3 pt-2">
+              <button type="button" onclick="closeModal()" class="flex-1 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--content)] text-xs font-semibold hover:bg-[var(--border)]">
+                Cancel
+              </button>
+              <button type="submit" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold shadow-md hover:opacity-90">
+                Save Topic
+              </button>
+            </div>
+          </form>
+        </div>
+      `);
+    }
+
+    function handleSaveTopic(e, subjectId) {
+      e.preventDefault();
+      const subject = appState.subjects.find(s => s.id === subjectId);
+      if (!subject) return;
+
+      const name = document.getElementById('topic-name-input').value.trim();
+      if (!name) {
+        showToast("Please enter a topic name", "warning");
+        return;
+      }
+
+      if (!subject.topics) subject.topics = [];
+
+      subject.topics.push({
+        id: generateId(),
+        name,
+        concept: false,
+        pyqs: false,
+        notes: false
+      });
+
+      expandedSubjects.add(subjectId);
+      saveData();
+      closeModal();
+      showToast("Topic added!", "success");
+      renderCurrentTab();
+    }
+
+    /* ==========================================================================
+       TAB 3: FOCUS CONTROLLER & VIEWS
+       ========================================================================== */
+
+    function renderFocusTab() {
+      // Mock Tests List Html
+      let mockTestsHtml = '';
+
+      if (appState.mockTests.length === 0) {
+        // Empty state when mockTests = []
+        mockTestsHtml = `
+          <div class="flex flex-col items-center justify-center p-8 text-center bg-[var(--card)] border border-[var(--border)] rounded-2xl my-2 shadow-sm">
+            <div class="w-16 h-16 rounded-2xl bg-[var(--content)] border border-[var(--border)] flex items-center justify-center text-3xl shadow-sm mb-4">
+              📊
+            </div>
+            <h3 class="text-lg font-bold text-[var(--foreground)]">No tests logged yet</h3>
+            <p class="text-xs text-[var(--muted-foreground)] max-w-[240px] mt-1 mb-5 leading-relaxed">
+              Log your first mock test to track progress
+            </p>
+            <button onclick="openLogTestModal()" class="px-5 py-2.5 rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold shadow-md hover:opacity-90 active:scale-95 transition-all flex items-center gap-2">
+              ${ICONS.plus} <span>Log First Test</span>
+            </button>
+          </div>
+        `;
+      } else {
+        mockTestsHtml = appState.mockTests.map(test => {
+          const totalMarks = test.totalMarks || 100;
+          const scored = test.scored || 0;
+          const pct = totalMarks > 0 ? (scored / totalMarks) * 100 : 0;
+
+          // Color-coded score: >=80 green, 60-79 yellow, <60 red
+          let scoreBadgeStyle = '';
+          if (pct >= 80) {
+            scoreBadgeStyle = 'color: #22c55e; background-color: rgba(34, 197, 94, 0.12); border: 1px solid rgba(34, 197, 94, 0.3);';
+          } else if (pct >= 60) {
+            scoreBadgeStyle = 'color: #eab308; background-color: rgba(234, 179, 8, 0.12); border: 1px solid rgba(234, 179, 8, 0.3);';
+          } else {
+            scoreBadgeStyle = 'color: #ef4444; background-color: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.3);';
+          }
+
+          return `
+            <div class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-4 shadow-sm flex flex-col gap-2.5">
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <h4 class="font-bold text-sm text-[var(--foreground)]">${escapeHtml(test.name)}</h4>
+                  <p class="text-[11px] text-[var(--muted-foreground)] mt-0.5">${formatDateNice(test.date)}</p>
+                </div>
+                <button onclick="deleteMockTest('${test.id}')" class="text-[var(--muted-foreground)] hover:text-red-400 p-1">
+                  ${ICONS.trash}
+                </button>
+              </div>
+
+              <!-- Score & Accuracy Badges -->
+              <div class="flex items-center gap-2 pt-1">
+                <span class="px-2.5 py-1 rounded-xl text-xs font-bold" style="${scoreBadgeStyle}">
+                  ${scored} / ${totalMarks} (${pct.toFixed(1)}%)
+                </span>
+                <span class="px-2.5 py-1 rounded-xl text-xs font-bold bg-[var(--content)] border border-[var(--border)] text-[var(--foreground)]">
+                  Accuracy: ${test.accuracy}%
+                </span>
+              </div>
+
+              <!-- Mistake / Trap Note -->
+              ${test.mistakeNote ? `
+                <div class="mt-1 p-2.5 rounded-xl bg-[var(--content)] border border-[var(--border)] text-xs text-[var(--muted-foreground)] leading-relaxed flex items-start gap-2">
+                  <span class="text-amber-400 text-sm">⚠️</span>
+                  <div class="flex-1">
+                    <span class="font-bold text-[var(--foreground)] block text-[11px] uppercase tracking-wider mb-0.5">Mistake / Trap Note:</span>
+                    <span>${escapeHtml(test.mistakeNote)}</span>
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        }).join('');
+      }
+
+      return `
+        <div class="tab-content flex flex-col gap-6">
+          <!-- Deep Work Timer Section -->
+          <section class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm flex flex-col items-center">
+            <!-- Mode Tabs (Pomodoro vs GATE CBT) -->
+            <div class="flex w-full bg-[var(--content)] p-1 rounded-xl border border-[var(--border)] mb-4">
+              <button onclick="switchTimerMode('pomodoro')" class="flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${timerState.mode === 'pomodoro' ? 'bg-[var(--primary)] text-[var(--primary-foreground)] shadow-sm' : 'text-[var(--muted-foreground)]'}">
+                Pomodoro
+              </button>
+              <button onclick="switchTimerMode('cbt')" class="flex-1 py-1.5 rounded-lg text-xs font-bold transition-all ${timerState.mode === 'cbt' ? 'bg-[var(--primary)] text-[var(--primary-foreground)] shadow-sm' : 'text-[var(--muted-foreground)]'}">
+                GATE CBT (3hr)
+              </button>
+            </div>
+
+            <!-- Mode Badges -->
+            ${timerState.mode === 'pomodoro' ? `
+              <span id="pomodoro-phase-badge" class="px-3 py-1 rounded-full text-xs font-bold border mb-2 transition-all" style="${timerState.pomodoroType === 'focus' ? 'background-color: rgba(59, 130, 246, 0.15); border-color: rgba(59, 130, 246, 0.35); color: #60a5fa;' : 'background-color: rgba(34, 197, 94, 0.15); border-color: rgba(34, 197, 94, 0.35); color: #4ade80;'}">
+                ${timerState.pomodoroType === 'focus' ? 'Focus Session' : 'Break Time'}
+              </span>
+            ` : `
+              <span class="px-3 py-1 rounded-full text-xs font-bold border mb-2 bg-purple-500/15 border-purple-500/35 text-purple-400">
+                Simulating GATE 2027 CBT Exam
+              </span>
+            `}
+
+            <!-- Monospace Digital Countdown Display -->
+            <div class="py-4">
+              <span id="timer-time-display" class="timer-display text-5xl sm:text-6xl font-black tracking-wider text-[var(--foreground)]">
+                ${formatTimer(timerState.remainingSeconds, timerState.mode)}
+              </span>
+            </div>
+
+            <!-- Timer Action Buttons -->
+            <div class="flex items-center gap-3 w-full max-w-xs mt-2">
+              <button id="timer-play-btn" onclick="toggleTimer()" class="flex-1 py-3 rounded-xl ${timerState.isRunning ? 'bg-[var(--accent)]' : 'bg-[var(--primary)]'} text-[var(--primary-foreground)] font-bold text-xs shadow-md flex items-center justify-center gap-2 active:scale-95 transition-all">
+                ${timerState.isRunning ? `${ICONS.pause} <span>Pause</span>` : `${ICONS.play} <span>Start</span>`}
+              </button>
+              <button onclick="resetTimer()" class="py-3 px-4 rounded-xl bg-[var(--content)] border border-[var(--border)] text-[var(--muted-foreground)] hover:text-[var(--foreground)] text-xs font-bold flex items-center justify-center gap-1.5 active:scale-95 transition-all">
+                ${ICONS.reset} <span>Reset</span>
+              </button>
+            </div>
+
+            <!-- Editable Focus & Break Durations (Pomodoro Mode Only) -->
+            ${timerState.mode === 'pomodoro' ? `
+              <div class="flex items-center justify-center gap-3 mt-5 pt-4 border-t border-[var(--border)] w-full text-xs text-[var(--muted-foreground)]">
+                <label class="flex items-center gap-1.5 bg-[var(--content)] px-3 py-1.5 rounded-xl border border-[var(--border)]">
+                  <span>Focus:</span>
+                  <input type="number" min="1" max="180" value="${timerState.focusMins}" onchange="updatePomodoroSettings(this.value, null)" class="w-10 bg-transparent text-[var(--foreground)] font-bold text-center outline-none" />
+                  <span>m</span>
+                </label>
+                <label class="flex items-center gap-1.5 bg-[var(--content)] px-3 py-1.5 rounded-xl border border-[var(--border)]">
+                  <span>Break:</span>
+                  <input type="number" min="1" max="60" value="${timerState.breakMins}" onchange="updatePomodoroSettings(null, this.value)" class="w-10 bg-transparent text-[var(--foreground)] font-bold text-center outline-none" />
+                  <span>m</span>
+                </label>
+              </div>
+            ` : ''}
+          </section>
+
+          <!-- Mock Test Log Section -->
+          <section class="flex flex-col gap-3">
+            <div class="flex items-center justify-between">
+              <h2 class="text-base font-bold text-[var(--foreground)]">Mock Test Log</h2>
+              <button onclick="openLogTestModal()" class="px-3 py-1.5 rounded-xl bg-[var(--content)] border border-[var(--border)] hover:border-[var(--primary)] text-[var(--primary)] text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm">
+                ${ICONS.plus} <span>Log Test</span>
+              </button>
+            </div>
+
+            <div class="flex flex-col gap-3">
+              ${mockTestsHtml}
+            </div>
+          </section>
+        </div>
+      `;
+    }
+
+    function openLogTestModal() {
+      openModal(`
+        <div>
+          <div class="flex items-center justify-between pb-3 border-b border-[var(--border)]">
+            <h3 class="text-base font-bold text-[var(--foreground)]">Log GATE Mock Test</h3>
+            <button onclick="closeModal()" class="text-[var(--muted-foreground)] hover:text-[var(--foreground)]">
+              ${ICONS.close}
+            </button>
+          </div>
+
+          <form onsubmit="handleSaveMockTest(event)" class="mt-4 flex flex-col gap-3.5">
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1.5">Date</label>
+              <input type="date" id="test-date-input" required value="${getToday()}" class="w-full bg-[var(--content)] border border-[var(--border)] focus:border-[var(--primary)] rounded-xl px-3.5 py-2 text-xs text-[var(--foreground)] outline-none" />
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1.5">Test Name</label>
+              <input type="text" id="test-name-input" required placeholder="e.g. Made Easy CBT Mock 1 / ACE Full Mock" class="w-full bg-[var(--content)] border border-[var(--border)] focus:border-[var(--primary)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--foreground)] outline-none" />
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1.5">Total Marks</label>
+                <input type="number" id="test-total-input" step="any" min="1" value="100" class="w-full bg-[var(--content)] border border-[var(--border)] focus:border-[var(--primary)] rounded-xl px-3.5 py-2 text-xs text-[var(--foreground)] outline-none" oninput="autoComputeAccuracy()" />
+              </div>
+              <div>
+                <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1.5">Marks Scored</label>
+                <input type="number" id="test-scored-input" step="any" required placeholder="e.g. 68.5" class="w-full bg-[var(--content)] border border-[var(--border)] focus:border-[var(--primary)] rounded-xl px-3.5 py-2 text-xs text-[var(--foreground)] outline-none" oninput="autoComputeAccuracy()" />
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1.5">Accuracy %</label>
+              <input type="number" id="test-accuracy-input" step="any" min="0" max="100" placeholder="e.g. 84" class="w-full bg-[var(--content)] border border-[var(--border)] focus:border-[var(--primary)] rounded-xl px-3.5 py-2 text-xs text-[var(--foreground)] outline-none" />
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1.5">Mistake / Trap Note</label>
+              <textarea id="test-note-input" rows="3" placeholder="Identify negative marks, conceptual gaps, and traps to avoid..." class="w-full bg-[var(--content)] border border-[var(--border)] focus:border-[var(--primary)] rounded-xl px-3.5 py-2 text-xs text-[var(--foreground)] outline-none resize-none"></textarea>
+            </div>
+
+            <div class="flex gap-3 pt-2">
+              <button type="button" onclick="closeModal()" class="flex-1 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--content)] text-xs font-semibold hover:bg-[var(--border)]">
+                Cancel
+              </button>
+              <button type="submit" class="flex-1 py-2.5 rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold shadow-md hover:opacity-90">
+                Save Test
+              </button>
+            </div>
+          </form>
+        </div>
+      `);
+    }
+
+    function autoComputeAccuracy() {
+      const total = parseFloat(document.getElementById('test-total-input')?.value);
+      const scored = parseFloat(document.getElementById('test-scored-input')?.value);
+      const accInput = document.getElementById('test-accuracy-input');
+      if (accInput && !isNaN(total) && total > 0 && !isNaN(scored)) {
+        const est = Math.max(0, Math.min(100, Math.round((scored / total) * 100)));
+        accInput.value = est;
+      }
+    }
+
+    function handleSaveMockTest(e) {
+      e.preventDefault();
+      const date = document.getElementById('test-date-input').value || getToday();
+      const name = document.getElementById('test-name-input').value.trim();
+      const totalMarks = parseFloat(document.getElementById('test-total-input').value) || 100;
+      const scored = parseFloat(document.getElementById('test-scored-input').value) || 0;
+      let accuracy = parseFloat(document.getElementById('test-accuracy-input').value);
+      if (isNaN(accuracy)) {
+        accuracy = totalMarks > 0 ? Math.round((scored / totalMarks) * 100) : 0;
+      }
+      const mistakeNote = document.getElementById('test-note-input').value.trim();
+
+      if (!name) {
+        showToast("Please enter a test name", "warning");
+        return;
+      }
+
+      const newTest = {
+        id: generateId(),
+        date,
+        name,
+        totalMarks,
+        scored,
+        accuracy,
+        mistakeNote,
+        createdAt: new Date().toISOString()
+      };
+
+      appState.mockTests.unshift(newTest);
+      saveData();
+      closeModal();
+      showToast("Mock test logged successfully!", "success");
+      renderCurrentTab();
+    }
+
+    function deleteMockTest(testId) {
+      if (confirm("Delete this mock test log?")) {
+        appState.mockTests = appState.mockTests.filter(t => t.id !== testId);
+        saveData();
+        showToast("Test log deleted", "info");
+        renderCurrentTab();
+      }
+    }
+
+    /* ==========================================================================
+       TAB 4: SETTINGS CONTROLLER & VIEWS
+       ========================================================================== */
+
+    function renderSettingsTab() {
+      const examDate = (appState.settings && appState.settings.examDate) || '2027-02-06';
+      const targetScore = (appState.settings && appState.settings.targetScore) ?? '';
+      const targetRank = (appState.settings && appState.settings.targetRank) ?? '';
+
+      return `
+        <div class="tab-content flex flex-col gap-6">
+          <header class="pt-3 pb-1">
+            <h1 class="text-2xl font-extrabold tracking-tight text-[var(--foreground)]">Settings & Preferences</h1>
+            <p class="text-xs text-[var(--muted-foreground)] mt-0.5">Configure exam milestones and manage backups</p>
+          </header>
+
+          <!-- Exam Configuration Card -->
+          <section class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm">
+            <h2 class="text-sm font-bold text-[var(--foreground)] mb-3">Exam Configuration</h2>
+            <form onsubmit="handleSaveSettings(event)" class="flex flex-col gap-3.5">
+              <div>
+                <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1">GATE Exam Date</label>
+                <input type="date" id="setting-exam-date" value="${examDate}" class="w-full bg-[var(--content)] border border-[var(--border)] focus:border-[var(--primary)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--foreground)] outline-none" />
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1">Target Score (out of 100)</label>
+                  <input type="number" id="setting-target-score" min="1" max="100" value="${targetScore}" placeholder="e.g. 78" class="w-full bg-[var(--content)] border border-[var(--border)] focus:border-[var(--primary)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--foreground)] outline-none" />
+                </div>
+                <div>
+                  <label class="block text-xs font-bold uppercase tracking-wider text-[var(--muted-foreground)] mb-1">Target Rank (AIR)</label>
+                  <input type="number" id="setting-target-rank" min="1" value="${targetRank}" placeholder="e.g. 100" class="w-full bg-[var(--content)] border border-[var(--border)] focus:border-[var(--primary)] rounded-xl px-3.5 py-2.5 text-xs text-[var(--foreground)] outline-none" />
+                </div>
+              </div>
+
+              <button type="submit" class="mt-2 py-2.5 rounded-xl bg-[var(--primary)] text-[var(--primary-foreground)] text-xs font-bold shadow-md hover:opacity-90 transition-opacity">
+                Save Exam Configuration
+              </button>
+            </form>
+          </section>
+
+          <!-- Data Management Card -->
+          <section class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-5 shadow-sm flex flex-col gap-3">
+            <h2 class="text-sm font-bold text-[var(--foreground)]">Data Management</h2>
+            <p class="text-xs text-[var(--muted-foreground)] leading-relaxed">
+              Export your study data as a JSON file or restore from a previous backup.
+            </p>
+
+            <div class="flex flex-col sm:flex-row gap-2.5 mt-1">
+              <button onclick="exportDataJSON()" class="flex-1 py-2.5 px-3 rounded-xl bg-[var(--content)] border border-[var(--border)] text-xs font-bold hover:border-[var(--primary)] text-[var(--foreground)] flex items-center justify-center gap-2 transition-all">
+                ${ICONS.download} <span>Export Data (JSON)</span>
+              </button>
+
+              <button onclick="triggerImportJSON()" class="flex-1 py-2.5 px-3 rounded-xl bg-[var(--content)] border border-[var(--border)] text-xs font-bold hover:border-[var(--primary)] text-[var(--foreground)] flex items-center justify-center gap-2 transition-all">
+                ${ICONS.upload} <span>Import Data</span>
+              </button>
+            </div>
+
+            <!-- Danger Zone: Reset Data -->
+            <div class="pt-3 mt-1 border-t border-[var(--border)]">
+              <button onclick="openResetConfirmationModal()" class="w-full py-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-bold hover:bg-red-500/20 transition-colors">
+                Reset All Data
+              </button>
+            </div>
+          </section>
+
+          <!-- App Info Card -->
+          <section class="bg-[var(--card)] border border-[var(--border)] rounded-2xl p-4 shadow-sm text-center">
+            <h3 class="font-extrabold text-sm text-[var(--foreground)]">GATE 2027 Tracker</h3>
+            <p class="text-[11px] text-[var(--muted-foreground)] mt-0.5">Version 1.0.0 • Built for CS/IT Engineering</p>
+            <p class="text-[10px] text-[var(--muted-foreground)] mt-2">Consistent daily effort compounds to top ranks.</p>
+          </section>
+        </div>
+      `;
+    }
+
+    function handleSaveSettings(e) {
+      e.preventDefault();
+      const examDate = document.getElementById('setting-exam-date').value || "2027-02-06";
+      const targetScore = document.getElementById('setting-target-score').value ? parseFloat(document.getElementById('setting-target-score').value) : null;
+      const targetRank = document.getElementById('setting-target-rank').value ? parseInt(document.getElementById('setting-target-rank').value, 10) : null;
+
+      appState.settings = {
+        examDate,
+        targetScore,
+        targetRank
+      };
+
+      saveData();
+      showToast("Exam settings saved!", "success");
+      renderCurrentTab();
+    }
+
+    function exportDataJSON() {
+      try {
+        const payload = JSON.stringify(appState, null, 2);
+        const blob = new Blob([payload], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `gate2027_tracker_backup_${getToday()}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        showToast("Backup exported successfully!", "success");
+      } catch (e) {
+        showToast("Failed to export backup", "warning");
+      }
+    }
+
+    function triggerImportJSON() {
+      const input = document.getElementById('json-file-input');
+      if (input) input.click();
+    }
+
+    function handleFileImport(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function(evt) {
+        try {
+          const parsed = JSON.parse(evt.target.result);
+          if (typeof parsed !== 'object' || parsed === null) {
+            throw new Error("Invalid format");
+          }
+
+          appState = {
+            habits: Array.isArray(parsed.habits) ? parsed.habits : [],
+            habitLogs: typeof parsed.habitLogs === 'object' && parsed.habitLogs !== null ? parsed.habitLogs : {},
+            subjects: Array.isArray(parsed.subjects) ? parsed.subjects : [],
+            mockTests: Array.isArray(parsed.mockTests) ? parsed.mockTests : [],
+            settings: {
+              examDate: parsed.settings?.examDate || "2027-02-06",
+              targetScore: parsed.settings?.targetScore || null,
+              targetRank: parsed.settings?.targetRank || null
+            }
+          };
+
+          saveData();
+          showToast("Data restored successfully!", "success");
+          renderCurrentTab();
+        } catch (err) {
+          showToast("Error importing JSON file. Please verify structure.", "warning");
+        }
+        e.target.value = '';
+      };
+      reader.readAsText(file);
+    }
+
+    function openResetConfirmationModal() {
+      openModal(`
+        <div class="text-center">
+          <div class="w-14 h-14 rounded-full bg-red-500/10 border border-red-500/30 text-red-500 flex items-center justify-center text-2xl mx-auto mb-4">
+            ⚠️
+          </div>
+          <h3 class="text-base font-bold text-[var(--foreground)]">Reset All Data?</h3>
+          <p class="text-xs text-[var(--muted-foreground)] mt-2 mb-6 leading-relaxed">
+            This will permanently delete all your habits, subjects, and test logs. This cannot be undone.
+          </p>
+          <div class="flex gap-3">
+            <button onclick="closeModal()" class="flex-1 py-2.5 rounded-xl border border-[var(--border)] bg-[var(--content)] text-xs font-semibold hover:bg-[var(--border)]">
+              Cancel
+            </button>
+            <button onclick="executeResetAllData()" class="flex-1 py-2.5 rounded-xl bg-red-600 text-white text-xs font-bold hover:bg-red-700 shadow-md">
+              Reset Everything
+            </button>
+          </div>
+        </div>
+      `);
+    }
+
+    function executeResetAllData() {
+      appState = {
+        habits: [],
+        habitLogs: {},
+        subjects: [],
+        mockTests: [],
+        settings: {
+          examDate: "2027-02-06",
+          targetScore: null,
+          targetRank: null
+        }
+      };
+      expandedSubjects.clear();
+      saveData();
+      closeModal();
+      showToast("All data permanently wiped", "warning");
+      renderCurrentTab();
+    }
+
+    /* ==========================================================================
+       VIEW ROUTER & NAVIGATION
+       ========================================================================== */
+
+    function switchTab(tabId) {
+      if (currentTab === tabId) return;
+      currentTab = tabId;
+      renderCurrentTab();
+      renderBottomNav();
+    }
+
+    function renderCurrentTab() {
+      const container = document.getElementById('main-content');
+      if (!container) return;
+
+      if (currentTab === 'home') {
+        container.innerHTML = renderHomeTab();
+      } else if (currentTab === 'syllabus') {
+        container.innerHTML = renderSyllabusTab();
+      } else if (currentTab === 'focus') {
+        container.innerHTML = renderFocusTab();
+      } else if (currentTab === 'settings') {
+        container.innerHTML = renderSettingsTab();
+      }
+    }
+
+    function renderBottomNav() {
+      const navEl = document.getElementById('bottom-nav');
+      if (!navEl) return;
+
+      navEl.innerHTML = NAV_TABS.map(tab => {
+        const isActive = currentTab === tab.id;
+        return `
+          <button onclick="switchTab('${tab.id}')" class="flex-1 flex flex-col items-center justify-center py-1 transition-colors ${isActive ? 'text-[var(--primary)]' : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)]'}">
+            ${ICONS[tab.icon]}
+            <span class="text-[10px] font-bold mt-1 tracking-tight">${tab.label}</span>
+            <div class="w-1.5 h-1.5 rounded-full mt-0.5 transition-all ${isActive ? 'bg-[var(--primary)]' : 'bg-transparent'}"></div>
+          </button>
+        `;
+      }).join('');
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    /* ==========================================================================
+       APP INITIALIZATION
+       ========================================================================== */
+
+    window.addEventListener('DOMContentLoaded', () => {
+      loadData();
+      renderBottomNav();
+      renderCurrentTab();
+    });
+  </script>
+</body>
+</html>
