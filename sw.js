@@ -1,8 +1,10 @@
-const CACHE_NAME = 'gate2027-v1';
+const CACHE_NAME = 'gate2027-v2';
 const ASSETS = [
-  '/',
-  '/index.html',
-  '/manifest.json'
+  './',
+  'index.html',
+  'manifest.json',
+  'icon-192.png',
+  'icon-512.png'
 ];
 
 self.addEventListener('install', e => {
